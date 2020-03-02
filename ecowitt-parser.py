@@ -11,7 +11,7 @@
 #   - Initial version using data from a GW1000 with WH3000SE sensor array
 #
 # LICENSE: GNU General Public License v3.0
-# GitHub: https://github.com/
+# GitHub: https://github.com/pjpeartree/rainmachine-ecowitt
 #
 
 import socket
@@ -35,7 +35,7 @@ class ECOWITT(RMParser):
     parserDebug = False
     parserInterval = 60  # seconds
     # Device network settings
-    IP_ADDRESS = '_IP Address'
+    IP_ADDRESS = 'IP Address'
     PORT = '_Port'
     params = {IP_ADDRESS: 'auto discover', PORT: 45000}
     # A collection of observations for the current day
