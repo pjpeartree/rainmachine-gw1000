@@ -15,6 +15,13 @@
 #   - Update discover socket timeout to 2 seconds.
 #   - Reduce the arithmetic effort by using cumulative numerical total divided by number of observations.
 #   - Store values with an UTC timestamp instead of a local timestamp.
+# 20200903:
+#   - Adding Battery Temperature sensor ids.
+# 20200904:
+#   - Increase the default min and max temperatures.
+#   - Fix day max wind sensor byte size.
+#   - New helper function to report observations into rainmachine.
+#   - Move lived ata new day check into the perform function, for better code readability.
 #
 # LICENSE: GNU General Public License v3.0
 # GitHub: https://github.com/pjpeartree/rainmachine-ecowitt
@@ -44,13 +51,12 @@ class ECOWITT(RMParser):
     IP_ADDRESS = 'IP Address'
     PORT = '_Port'
     DEVICE_NAME = '_Device Name'
-    params = {IP_ADDRESS: 'auto discover', PORT: 45000, DEVICE_NAME: 'unknown'}
-    # A collection of observations for the current day
     OBSERVATION_COUNTER = 'observations'
+    # A collection of observations for the current day
     observations = {OBSERVATION_COUNTER: 0,
                     RMParser.dataType.TEMPERATURE: 0,
-                    RMParser.dataType.MAXTEMP: -60,
-                    RMParser.dataType.MINTEMP: 60,
+                    RMParser.dataType.MAXTEMP: -100,
+                    RMParser.dataType.MINTEMP: 100,
                     RMParser.dataType.RH: 0,
                     RMParser.dataType.MAXRH: 0,
                     RMParser.dataType.MINRH: 100,
@@ -59,6 +65,7 @@ class ECOWITT(RMParser):
                     RMParser.dataType.RAIN: 0,
                     RMParser.dataType.PRESSURE: 0,
                     RMParser.dataType.TIMESTAMP: 0}
+    params = {IP_ADDRESS: 'auto discover', PORT: 45000, DEVICE_NAME: 'unknown'}
     # Current execution start of day timestamp
     liveDataTimestamp = 0
 
@@ -77,10 +84,17 @@ class ECOWITT(RMParser):
         if self._connect() or self._discover():
             # Successfully connected to the Ecowitt device, let's retrieve live data
             live_data = self._get_live_data()
-            # Load current day sensor observations
+            # Load current observations
             self._load_observations()
-            # Parser and add the live data sensor observations
+            # Check if the live data is for a new day
+            if rmGetStartOfDay(self.liveDataTimestamp) != rmGetStartOfDay(
+                    self.observations[RMParser.dataType.TIMESTAMP]):
+                # Add the observations of yesterday
+                self._report_observations()
+                self._reset_observations()
+            # Parser live data and add observations
             self._parse_live_data(live_data)
+            self._report_observations()
             # Save current day sensor observations
             self._save_observations()
 
@@ -186,7 +200,7 @@ class ECOWITT(RMParser):
             b'\x16': (self._ignore_sensor, 2),  # UV  (uW/m2), size in bytes:2
             b'\x17': (self._ignore_sensor, 1),  # UVI (0-15 index), size in bytes:1
             b'\x18': (self._ignore_sensor, 6),  # Date and time, size in bytes:6
-            b'\x19': (self._ignore_sensor, 1),  # Day max_wind (m/s), size in bytes
+            b'\x19': (self._ignore_sensor, 2),  # Day max_wind (m/s), size in bytes:2
             b'\x1A': (self._ignore_sensor, 2),  # Temperature 1 (C), size in bytes:2
             b'\x1B': (self._ignore_sensor, 2),  # Temperature 2 (C), size in bytes:2
             b'\x1C': (self._ignore_sensor, 2),  # Temperature 3 (C), size in bytes:2
@@ -250,7 +264,15 @@ class ECOWITT(RMParser):
             b'\x5B': (self._ignore_sensor, 1),  # Leak ch4 , size in bytes:1
             b'\x60': (self._ignore_sensor, 1),  # Lightning distance 1-40KM, size in bytes:1
             b'\x61': (self._ignore_sensor, 4),  # Lightning detected_time (UTC), size in bytes:4
-            b'\x62': (self._ignore_sensor, 4)  # Lightning power_time (UTC), ), size in bytes:, 4
+            b'\x62': (self._ignore_sensor, 4),  # Lightning power_time (UTC), size in bytes: 4
+            b'\x63': (self._ignore_sensor, 3),  # Battery Temperature 1 (C), size in bytes: 3
+            b'\x64': (self._ignore_sensor, 3),  # Battery Temperature 2 (C), size in bytes: 3
+            b'\x65': (self._ignore_sensor, 3),  # Battery Temperature 3 (C), size in bytes: 3
+            b'\x66': (self._ignore_sensor, 3),  # Battery Temperature 4 (C), size in bytes: 3
+            b'\x67': (self._ignore_sensor, 3),  # Battery Temperature 5 (C), size in bytes: 3
+            b'\x68': (self._ignore_sensor, 3),  # Battery Temperature 6 (C), size in bytes: 3
+            b'\x69': (self._ignore_sensor, 3),  # Battery Temperature 7 (C), size in bytes: 3
+            b'\x6A': (self._ignore_sensor, 3)  # Battery Temperature 8 (C), size in bytes: 3
         }
         sensor_id = data[index]
         sensor_reader, size = switcher.get(sensor_id, (self._unknown_sensor, 1))
@@ -260,55 +282,43 @@ class ECOWITT(RMParser):
     def _outdoor_temperature(self, data, index, size):
         outdoor_temperature = read_int(data[index + 1: index + 1 + size], False, size) / 10.0  # Sensor Unit: degC
         self.observations[RMParser.dataType.TEMPERATURE] += outdoor_temperature  # RainMachine Unit: degC
-        # Add the current daily average temperature
-        self._add_value(RMParser.dataType.TEMPERATURE,
-                        self.observations[RMParser.dataType.TEMPERATURE] / self.observations_counter)
         # Check if the outdoor_temperature is a new maximum
         if outdoor_temperature > self.observations[RMParser.dataType.MAXTEMP]:
-            self._add_value(RMParser.dataType.MAXTEMP, outdoor_temperature)
+            self.observations[RMParser.dataType.MAXTEMP] = outdoor_temperature
         # Check if the outdoor_temperature is a new minimum
         if outdoor_temperature < self.observations[RMParser.dataType.MINTEMP]:
-            self._add_value(RMParser.dataType.MINTEMP, outdoor_temperature)
+            self.observations[RMParser.dataType.MINTEMP] = outdoor_temperature
 
     def _outdoor_humidity(self, data, index, size):
         outdoor_humidity = read_int(data[index + 1: index + 1 + size], False, size)  # Sensor Unit: %
         self.observations[RMParser.dataType.RH] += outdoor_humidity  # RainMachine Unit: %
-        # Add the current daily average humidity
-        self._add_value(RMParser.dataType.RH, self.observations[RMParser.dataType.RH] / self.observations_counter)
         # Check if the outdoor_humidity is a new maximum
         if outdoor_humidity > self.observations[RMParser.dataType.MAXRH]:
-            self._add_value(RMParser.dataType.MAXRH, outdoor_humidity)
+            self.observations[RMParser.dataType.MAXRH] = outdoor_humidity
         # Check if the outdoor_humidity is a new minimum
         if outdoor_humidity < self.observations[RMParser.dataType.MINRH]:
-            self._add_value(RMParser.dataType.MINRH, outdoor_humidity)
+            self.observations[RMParser.dataType.MINRH] = outdoor_humidity
 
     def _relative_barometric(self, data, index, size):
         relative_barometric = read_int(data[index + 1: index + 1 + size], False, size)  # Sensor Unit: dPa
         relative_barometric /= 100.0  # Conversion from dPa to kPa
         self.observations[RMParser.dataType.PRESSURE] += relative_barometric  # RainMachine Unit: kPa
-        # Add the current daily average relative barometric pressure
-        self._add_value(RMParser.dataType.PRESSURE,
-                        self.observations[RMParser.dataType.PRESSURE] / self.observations_counter)
 
     def _wind_speed(self, data, index, size):
-        wind_speed = read_int(data[index + 1: index + 1 + size], False, size)  # Sensor Unit: m/s
+        wind_speed = read_int(data[index + 1: index + 1 + size], False, size) / 10.0  # Sensor Unit: m/s
         self.observations[RMParser.dataType.WIND] += wind_speed  # RainMachine Unit: m/s
-        # Add the current daily average wind speed
-        self._add_value(RMParser.dataType.WIND, self.observations[RMParser.dataType.WIND] / self.observations_counter)
 
     def _rain_day(self, data, index, size):
         rain_day = read_int(data[index + 1: index + 1 + size], False, size) / 10.0  # Sensor Unit: mm
-        self.observations[RMParser.dataType.RAIN] = rain_day  # RainMachine Unit: mm
-        # Current day total amount of rain
-        self._add_value(RMParser.dataType.RAIN, rain_day)
+        # Preventive check, the rain amount should be cumulative and always bigger that the previous value.
+        if rain_day > self.observations[RMParser.dataType.RAIN]:
+            self.observations[RMParser.dataType.RAIN] = rain_day  # RainMachine Unit: mm
 
     def _light(self, data, index, size):
         light = read_int(data[index + 1: index + 1 + size], False, size) / 10.0  # Sensor Unit: lux
         solar_radiation = float(light) * 0.0079  # Convert lux into w/m2, 0.0079 is the ratio at sunlight spectrum
         solar_radiation *= 0.0036  # Convert w/m2 to MJ/m2/h, 1 W/m2 = 1 J/m2/Sec
         self.observations[RMParser.dataType.SOLARRADIATION] += solar_radiation  # RainMachine Unit: MJ/m2/day
-        self._add_value(RMParser.dataType.SOLARRADIATION,
-                        self.observations[RMParser.dataType.SOLARRADIATION] / self.observations_counter)
 
     # noinspection PyMethodMayBeStatic,PyUnusedLocal
     def _ignore_sensor(self, data, index, size):
@@ -325,32 +335,56 @@ class ECOWITT(RMParser):
                 self.observations = json.load(open('observations.json'))
             except IOError:
                 self._log_error('Error: unable to load the Ecowiit parser data file')
-        # Check if the live data is for a new day
-        if rmGetStartOfDay(self.liveDataTimestamp) != rmGetStartOfDay(self.observations[RMParser.dataType.TIMESTAMP]):
+        else:
             self._reset_observations()
-        try:
-            self.observations_counter = float(self.observations[ECOWITT.OBSERVATION_COUNTER] + 1)
-        except KeyError:
+        # Backward compatibility check for observation data file
+        if ECOWITT.OBSERVATION_COUNTER not in self.observations:
             self._reset_observations()
-            self.observations_counter = 1
 
     # Helper function to save the sensor observations data to disk.
     def _save_observations(self):
         try:
-            self.observations[ECOWITT.OBSERVATION_COUNTER] += 1
             json.dump(self.observations, open('observations.json', 'w'))
         except IOError:
             self._log_error('Error: unable to save the Ecowitt parser data file')
 
-    # Helper function to reset the day observation data
+    # Helper function to reset the observation data
     def _reset_observations(self):
         self.observations = ECOWITT.observations
         self.observations[RMParser.dataType.TIMESTAMP] = self.liveDataTimestamp
 
-    # Helper function to add current day sensor observations
-    def _add_value(self, key, value):
-        if value is not None:
-            self.addValue(key, rmGetStartOfDayUtc(self.liveDataTimestamp), value)
+    # Helper function to add observations
+    def _report_observations(self):
+        # Yesterday start of the day timestamp in UTC
+        ts = rmGetStartOfDayUtc(self.observations[RMParser.dataType.TIMESTAMP])
+        # Increment the number of observations
+        self.observations[ECOWITT.OBSERVATION_COUNTER] += 1
+        observations_counter = self.observations[ECOWITT.OBSERVATION_COUNTER]
+        # Add the daily average temperature
+        self.addValue(RMParser.dataType.TEMPERATURE, ts,
+                      self.observations[RMParser.dataType.TEMPERATURE] / observations_counter)
+        # Add the daily max temperature
+        self.addValue(RMParser.dataType.MAXTEMP, ts, self.observations[RMParser.dataType.MAXTEMP])
+        # Add the daily max temperature
+        self.addValue(RMParser.dataType.MINTEMP, ts, self.observations[RMParser.dataType.MINTEMP])
+        # Add the daily average humidity
+        self.addValue(RMParser.dataType.RH, ts, self.observations[RMParser.dataType.RH] / observations_counter)
+        # Add the daily max humidity
+        self.addValue(RMParser.dataType.MAXRH, ts, self.observations[RMParser.dataType.MAXRH])
+        # Add the daily min humidity
+        self.addValue(RMParser.dataType.MINRH, ts, self.observations[RMParser.dataType.MINRH])
+        # Add the daily average relative barometric pressure
+        self.addValue(RMParser.dataType.PRESSURE, ts,
+                      self.observations[RMParser.dataType.PRESSURE] / observations_counter)
+        # Add the daily average wind speed
+        self.addValue(RMParser.dataType.WIND, ts,
+                      self.observations[RMParser.dataType.WIND] / observations_counter)
+        # Add the daily rain amount
+        self.addValue(RMParser.dataType.RAIN, ts, self.observations[RMParser.dataType.RAIN])
+        # Add the daily average solar radiation
+        self.addValue(RMParser.dataType.SOLARRADIATION, ts,
+                      self.observations[RMParser.dataType.SOLARRADIATION] / observations_counter)
+        log.debug(self.observations)
 
     # Helper function to log errors
     def _log_error(self, message, packet=None):
