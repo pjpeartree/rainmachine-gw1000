@@ -1,8 +1,8 @@
-# Personal weather station Ecowitt devices parser for the RainMachine sprinkler controller.
+# Wi-Fi Weather Station Gateway, Ecowitt GW1000, parser for the RainMachine sprinkler controller.
 #
 # This parser was created to avoid the use of cloud solutions, like WUnderground.com or
 # Ecowitt.net (API not available yet). The parser establishes a direct connection between
-# the Ecowitt and the RainMachine devices. You can still use WUnderground too but now you
+# the GW1000 and the RainMachine devices. You can still use WUnderground too but now you
 # have two sources in case either one decides to change something or has a problem.
 #
 # Author: Pedro J. Pereira <pjpeartree@gmail.com>
@@ -23,10 +23,10 @@
 #   - Move lived data new day check into the perform function, for better code readability.
 #   - Performance improvement, keep observations in memory only, do not save them into a data file.
 #       Downside, in case of an unlikely power outage, the current day observations are lost.
-#       This also to take care of flash lifespan avoiding I/O operations.
+#       This also take care of flash lifespan avoiding I/O operations.
 #
 # LICENSE: GNU General Public License v3.0
-# GitHub: https://github.com/pjpeartree/rainmachine-ecowitt
+# GitHub: https://github.com/pjpeartree/rainmachine-gw1000
 #
 
 import socket
@@ -41,9 +41,9 @@ from RMUtilsFramework.rmLogging import log
 from RMUtilsFramework.rmTimeUtils import rmGetStartOfDay, rmGetStartOfDayUtc
 
 
-class ECOWITT(RMParser):
-    parserName = 'Ecowitt Parser'
-    parserDescription = 'Ecowitt live personal weather station data feed'
+class GW1000(RMParser):
+    parserName = 'GW1000 Parser'
+    parserDescription = 'GW1000 Wi-Fi Weather Station Gateway data feed'
     parserForecast = False
     parserHistorical = True
     parserEnabled = False
@@ -88,7 +88,7 @@ class ECOWITT(RMParser):
     def perform(self):
         # Try to connect, and if it fail try to auto discover the device
         if self._connect() or self._discover():
-            # Successfully connected to the Ecowitt device, let's retrieve live data
+            # Successfully connected to the GW1000 device, let's retrieve live data
             live_data = self._get_live_data()
             # Check if the live data is for a new day
             if rmGetStartOfDay(self.currentTimestamp) != self.startOfDayTimestamp:
@@ -102,7 +102,7 @@ class ECOWITT(RMParser):
             self.observation_counter += 1
             self._report_observations()
 
-    # Connect to the Ecowitt device on the local network
+    # Connect to the GW1000 device on the local network
     def _connect(self):
         try:
             # Check if the current ip is valid
@@ -117,11 +117,11 @@ class ECOWITT(RMParser):
             self.connection.connect((str(self.params.get(self.IP_ADDRESS)), self.params.get(self.PORT)))
             return True
         except socket.error:
-            self._log_error('Error: unable to connect to the Ecowitt local network device')
+            self._log_error('Error: unable to connect to the GW1000 local network device')
             self.connection.close()
             return False
 
-    # Discover the Ecowitt device on the local network.
+    # Discover the GW1000 device on the local network.
     def _discover(self):
         try:
             # Create a socket to send and receive the CMD_BROADCAST command.
@@ -150,7 +150,7 @@ class ECOWITT(RMParser):
                 else:
                     self.lastKnownError = 'Error: Unsupported local console: {}'.format(device_name)
             except socket.error:
-                self.lastKnownError = 'Error: unable to find Ecowitt device on local network'
+                self.lastKnownError = 'Error: unable to find GW1000 device on local network'
         self._log_error(self.lastKnownError)
         return False
 
@@ -325,7 +325,7 @@ class ECOWITT(RMParser):
 
     # Helper function to reset the observation data for a new day
     def _reset_observations(self):
-        self.observations = ECOWITT.observations
+        self.observations = GW1000.observations
         self.observation_counter = 0
         self.startOfDayTimestamp = rmGetStartOfDay(self.currentTimestamp)
 
@@ -376,7 +376,7 @@ def read_int(data, unsigned, size):
         return struct.unpack('>i', data[0:size])[0]
 
 
-# Helper function to get the current timestamp with with microseconds
+# Helper function to get the current timestamp with microseconds
 def current_timestamp():
     now = datetime.now()
     return time.mktime(now.timetuple()) + now.microsecond / 1e6
