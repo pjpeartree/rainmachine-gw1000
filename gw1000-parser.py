@@ -26,6 +26,7 @@
 #       This also takes care of flash lifespan avoiding I/O operations.
 # 20200909
 #   - Fix init failure. Now the startOfDayTimestamp is set only on first usage.
+#   - Set default observation to None. This avoid report ignored sensors.
 #
 # LICENSE: GNU General Public License v3.0
 # GitHub: https://github.com/pjpeartree/rainmachine-gw1000
@@ -57,16 +58,16 @@ class GW1000(RMParser):
     DEVICE_NAME = '_Device Name'
     OBSERVATION_COUNTER = 'observations'
     # A collection of observations for the current day
-    observations = {RMParser.dataType.TEMPERATURE: 0,
-                    RMParser.dataType.MAXTEMP: -100,
-                    RMParser.dataType.MINTEMP: 100,
-                    RMParser.dataType.RH: 0,
-                    RMParser.dataType.MAXRH: 0,
-                    RMParser.dataType.MINRH: 100,
-                    RMParser.dataType.WIND: 0,
-                    RMParser.dataType.SOLARRADIATION: 0,
-                    RMParser.dataType.RAIN: 0,
-                    RMParser.dataType.PRESSURE: 0}
+    observations = {RMParser.dataType.TEMPERATURE: None,
+                    RMParser.dataType.MAXTEMP: None,
+                    RMParser.dataType.MINTEMP: None,
+                    RMParser.dataType.RH: None,
+                    RMParser.dataType.MAXRH: None,
+                    RMParser.dataType.MINRH: None,
+                    RMParser.dataType.WIND: None,
+                    RMParser.dataType.SOLARRADIATION: None,
+                    RMParser.dataType.RAIN: None,
+                    RMParser.dataType.PRESSURE: None}
     params = {IP_ADDRESS: 'auto discover', PORT: 45000, DEVICE_NAME: 'unknown'}
     # Current execution start of day timestamp
     currentTimestamp = 0
@@ -307,7 +308,7 @@ class GW1000(RMParser):
     def _rain_day(self, data, index, size):
         rain_day = read_int(data[index + 1: index + 1 + size], False, size) / 10.0  # Sensor Unit: mm
         # Preventive check, the rain amount should be cumulative and always bigger that the previous value.
-        if rain_day > self.observations[RMParser.dataType.RAIN]:
+        if self.observations[RMParser.dataType.RAIN] is None or rain_day > self.observations[RMParser.dataType.RAIN]:
             self.observations[RMParser.dataType.RAIN] = rain_day  # RainMachine Unit: mm
 
     def _light(self, data, index, size):
@@ -339,17 +340,17 @@ class GW1000(RMParser):
 
     # Helper function to calculate an observation average
     def _observation_average(self, key, new_value):
-        total_value = self.observations[key] * self.observation_counter
+        total_value = 0 if self.observations[key] is None else self.observations[key] * self.observation_counter
         average = (total_value + new_value) / (self.observation_counter + 1)
         self.observations[key] = average
 
     # Helper function to check the new maximum and minimum of a observation
     def _observation_max_min(self, max_key, min_key, value):
         # Check if the value is a new maximum
-        if value > self.observations[max_key]:
+        if self.observations[max_key] is None or value > self.observations[max_key]:
             self.observations[max_key] = value
         # Check if the value is a new minimum
-        if value < self.observations[min_key]:
+        if self.observations[min_key] is None or value < self.observations[min_key]:
             self.observations[min_key] = value
 
     # Helper function to log errors
