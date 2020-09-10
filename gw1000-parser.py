@@ -20,10 +20,12 @@
 #   - Increase the default min and max temperatures.
 #   - Fix day max wind sensor byte size.
 #   - New helper function to report observations into rainmachine.
-#   - Move lived data new day check into the perform function, for better code readability.
+#   - Move new day check into the perform function, for better code readability.
 #   - Performance improvement, keep observations in memory only, do not save them into a data file.
 #       Downside, in case of an unlikely power outage, the current day observations are lost.
-#       This also take care of flash lifespan avoiding I/O operations.
+#       This also takes care of flash lifespan avoiding I/O operations.
+# 20200909
+#   - Fix init failure. Now the startOfDayTimestamp is set only on first usage.
 #
 # LICENSE: GNU General Public License v3.0
 # GitHub: https://github.com/pjpeartree/rainmachine-gw1000
@@ -43,7 +45,7 @@ from RMUtilsFramework.rmTimeUtils import rmGetStartOfDay, rmGetStartOfDayUtc
 
 class GW1000(RMParser):
     parserName = 'GW1000 Parser'
-    parserDescription = 'GW1000 Wi-Fi Weather Station Gateway data feed'
+    parserDescription = 'GW1000 WiFi Weather Station Gateway data feed'
     parserForecast = False
     parserHistorical = True
     parserEnabled = False
@@ -70,11 +72,7 @@ class GW1000(RMParser):
     currentTimestamp = 0
     startOfDayTimestamp = 0
     observation_counter = 0
-
-    def __init__(self):
-        RMParser.__init__(self)
-        self.startOfDayTimestamp = rmGetStartOfDay(current_timestamp())
-
+        
     # noinspection PyUnusedLocal
     def isEnabledForLocation(self, tz, lat, lon):
         try:
@@ -90,8 +88,11 @@ class GW1000(RMParser):
         if self._connect() or self._discover():
             # Successfully connected to the GW1000 device, let's retrieve live data
             live_data = self._get_live_data()
+            if self.startOfDayTimestamp == 0:
+                # First usage, initialization of the start of the day variable
+                self.startOfDayTimestamp = rmGetStartOfDay(self.currentTimestamp)
             # Check if the live data is for a new day
-            if rmGetStartOfDay(self.currentTimestamp) != self.startOfDayTimestamp:
+            elif rmGetStartOfDay(self.currentTimestamp) != self.startOfDayTimestamp:
                 # Report historical data of yesterday
                 self._report_observations()
                 # Reset the observations data for a new day
