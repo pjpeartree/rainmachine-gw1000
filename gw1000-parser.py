@@ -27,6 +27,10 @@
 # 20200909
 #   - Fix init failure. Now the startOfDayTimestamp is set only on first usage.
 #   - Set default observation to None. This avoid report ignored sensors.
+# 20200915
+#   - Update isEnabledForLocation to match the default expected behaviour.
+#   - Remove unnecessary params.
+#   - Fix default params error.
 #
 # LICENSE: GNU General Public License v3.0
 # GitHub: https://github.com/pjpeartree/rainmachine-gw1000
@@ -53,10 +57,8 @@ class GW1000(RMParser):
     parserDebug = False
     parserInterval = 60  # seconds
     # Device network settings
-    IP_ADDRESS = 'IP Address'
-    PORT = '_Port'
-    DEVICE_NAME = '_Device Name'
-    OBSERVATION_COUNTER = 'observations'
+    ip = 'auto discover'
+    port = 45000
     # A collection of observations for the current day
     observations = {RMParser.dataType.TEMPERATURE: None,
                     RMParser.dataType.MAXTEMP: None,
@@ -68,7 +70,8 @@ class GW1000(RMParser):
                     RMParser.dataType.SOLARRADIATION: None,
                     RMParser.dataType.RAIN: None,
                     RMParser.dataType.PRESSURE: None}
-    params = {IP_ADDRESS: 'auto discover', PORT: 45000, DEVICE_NAME: 'unknown'}
+    defaultParams = {}
+    params = {}
     # Current execution start of day timestamp
     currentTimestamp = 0
     startOfDayTimestamp = 0
@@ -76,13 +79,7 @@ class GW1000(RMParser):
         
     # noinspection PyUnusedLocal
     def isEnabledForLocation(self, tz, lat, lon):
-        try:
-            # Check if the current ip is valid
-            socket.inet_aton(str(self.params.get(self.IP_ADDRESS)))
-            return self.parserEnabled
-        except socket.error:
-            # The current ip is invalid, we need to try to discover the device.
-            return False
+        return GW1000.parserEnabled
 
     def perform(self):
         # Try to connect, and if it fail try to auto discover the device
@@ -108,7 +105,7 @@ class GW1000(RMParser):
     def _connect(self):
         try:
             # Check if the current ip is valid
-            socket.inet_aton(str(self.params.get(self.IP_ADDRESS)))
+            socket.inet_aton(self.ip)
         except socket.error:
             # The current ip is invalid, we need to try to discover the device.
             return False
@@ -116,7 +113,7 @@ class GW1000(RMParser):
             # Create a client to connect to the local network device
             self.connection = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.connection.settimeout(10)
-            self.connection.connect((str(self.params.get(self.IP_ADDRESS)), self.params.get(self.PORT)))
+            self.connection.connect((self.ip, self.port))
             return True
         except socket.error:
             self._log_error('Error: unable to connect to the GW1000 local network device')
@@ -145,9 +142,8 @@ class GW1000(RMParser):
                 # Check device name to avoid detection of other local Ecowiit/Ambient consoles
                 device_name = packet[18:len(packet) - 1]
                 if device_name.startswith('GW'):
-                    self.params[self.DEVICE_NAME] = device_name
-                    self.params[self.IP_ADDRESS] = '%d.%d.%d.%d' % struct.unpack('>BBBB', packet[11:15])
-                    self.params[self.PORT] = struct.unpack('>H', packet[15: 17])[0]
+                    self.ip = '%d.%d.%d.%d' % struct.unpack('>BBBB', packet[11:15])
+                    self.port = struct.unpack('>H', packet[15: 17])[0]
                     return self._connect()
                 else:
                     self.lastKnownError = 'Error: Unsupported local console: {}'.format(device_name)
