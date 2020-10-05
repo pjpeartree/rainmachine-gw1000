@@ -31,6 +31,8 @@
 #   - Update isEnabledForLocation to match the default expected behaviour.
 #   - Remove unnecessary params.
 #   - Fix default params error.
+# 20201005
+#   - Update the reset observations function.
 #
 # LICENSE: GNU General Public License v3.0
 # GitHub: https://github.com/pjpeartree/rainmachine-gw1000
@@ -323,7 +325,7 @@ class GW1000(RMParser):
 
     # Helper function to reset the observation data for a new day
     def _reset_observations(self):
-        self.observations = GW1000.observations
+        self.observations = dict.fromkeys(self.observations, None)
         self.observation_counter = 0
         self.startOfDayTimestamp = rmGetStartOfDay(self.currentTimestamp)
 
