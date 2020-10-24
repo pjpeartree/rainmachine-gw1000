@@ -33,6 +33,8 @@
 #   - Fix default params error.
 # 20201005
 #   - Update the reset observations function.
+# 20201024
+#   - Cast observation value to float to perform the average calculations.
 #
 # LICENSE: GNU General Public License v3.0
 # GitHub: https://github.com/pjpeartree/rainmachine-gw1000
@@ -338,8 +340,8 @@ class GW1000(RMParser):
 
     # Helper function to calculate an observation average
     def _observation_average(self, key, new_value):
-        total_value = 0 if self.observations[key] is None else self.observations[key] * self.observation_counter
-        average = (total_value + new_value) / (self.observation_counter + 1)
+        total_value = 0.0 if self.observations[key] is None else float(self.observations[key]) * self.observation_counter
+        average = (total_value + float(new_value)) / (self.observation_counter + 1)
         self.observations[key] = average
 
     # Helper function to check the new maximum and minimum of a observation
