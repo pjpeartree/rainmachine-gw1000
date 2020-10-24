@@ -35,6 +35,7 @@
 #   - Update the reset observations function.
 # 20201024
 #   - Cast observation value to float to perform the average calculations.
+#   - Remove unused import rmGetStartOfDayUtc.
 #
 # LICENSE: GNU General Public License v3.0
 # GitHub: https://github.com/pjpeartree/rainmachine-gw1000
@@ -49,7 +50,7 @@ from os import path
 
 from RMParserFramework.rmParser import RMParser
 from RMUtilsFramework.rmLogging import log
-from RMUtilsFramework.rmTimeUtils import rmGetStartOfDay, rmGetStartOfDayUtc
+from RMUtilsFramework.rmTimeUtils import rmGetStartOfDay
 
 
 class GW1000(RMParser):
